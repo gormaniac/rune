@@ -1,0 +1,40 @@
+services:
+  aha_service:
+    user: "999"
+    container_name: ${AHA_SERVICE_NAME}
+    hostname: ${AHA_FQDN}
+    image: vertexproject/synapse-aha:v2.x.x
+    restart: unless-stopped
+    volumes:
+        - aha_volume:/vertex/storage
+    networks:
+      syn_net:
+        ipv4_address: ${AHA_IP_ADDRESS}
+    ports:
+      - "${HTTPS_PORT}:4443"
+      - "27492:27492"
+    environment:
+        # disable HTTPS API for now to prevent port collisions
+        - SYN_AHA_HTTPS_PORT=4443
+        - SYN_AHA_AHA_NETWORK=${AHA_NETWORK}
+        - SYN_AHA_DNS_NAME=${AHA_FQDN}
+
+volumes:
+  aha_volume:
+    name: ${AHA_SERVICE_NAME}
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /srv/syn/${AHA_SERVICE_NAME}/storage
+
+networks:
+  syn_net:
+    external: true
+    name: ${NETWORK_NAME}
+
+env_file:
+  - path: ../../.env
+    required: true
+  - path: ./.env.override
+    required: false

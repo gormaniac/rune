@@ -1,0 +1,89 @@
+services:
+  axon_service:
+    user: "999"
+    container_name: ${AXON_SERVICE_NAME}
+    image: vertexproject/synapse-axon:v2.x.x
+    restart: unless-stopped
+    volumes:
+        - axon_volume:/vertex/storage
+    networks:
+      syn_net:
+        ipv4_address: ${AXON_IP_ADDRESS}
+    ports:
+      - "${HTTPS_PORT}:4443"
+      - "27492:27492"
+    environment:
+        - SYN_AXON_HTTPS_PORT=4443
+        - SYN_AXON_AHA_PROVISION=${AXON_AHA_REG_URL}
+
+  jsonstor_service:
+    user: "999"
+    container_name: ${JSONSTOR_SERVICE_NAME}
+    image: vertexproject/synapse-jsonstor:v2.x.x
+    restart: unless-stopped
+    volumes:
+        - jsonstor_volume:/vertex/storage
+    networks:
+      syn_net:
+        ipv4_address: ${JSONSTOR_IP_ADDRESS}
+    ports:
+      - "${HTTPS_PORT}:4443"
+      - "27492:27492"
+    environment:
+        - SYN_JSONSTOR_HTTPS_PORT=4443
+        - SYN_JSONSTOR_AHA_PROVISION=${JSONSTOR_AHA_REG_URL}
+
+  cortex_service:
+    user: "999"
+    container_name: ${CORTEX_SERVICE_NAME}
+    image: vertexproject/synapse-cortex:v2.x.x
+    restart: unless-stopped
+    volumes:
+        - cortex_volume:/vertex/storage
+    networks:
+      syn_net:
+        ipv4_address: ${CORTEX_IP_ADDRESS}
+    ports:
+      - "${HTTPS_PORT}:4443"
+      - "27492:27492"
+    environment:
+        - SYN_CORTEX_HTTPS_PORT=4443
+        - SYN_CORTEX_AXON=aha://axon...
+        - SYN_CORTEX_JSONSTOR=aha://jsonstor...
+        - SYN_CORTEX_AHA_PROVISION=${CORTEX_AHA_REG_URL}
+
+volumes:
+  axon_volume:
+    name: ${AXON_SERVICE_NAME}
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /srv/syn/${AXON_SERVICE_NAME}/storage
+  jsonstor_volume:
+    name: ${JSONSTOR_SERVICE_NAME}
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /srv/syn/${JSONSTOR_SERVICE_NAME}/storage
+  cortex_volume:
+    name: ${CORTEX_SERVICE_NAME}
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /srv/syn/${CORTEX_SERVICE_NAME}/storage
+
+networks:
+  syn_net:
+    external: true
+    name: ${NETWORK_NAME}
+
+env_file:
+  - path: ../../.env
+    required: true
+  - path: ./.env.aha
+    required: true
+  - path: ./.env.override
+    required: false
