@@ -3,10 +3,10 @@
 Synapse RunEverything - A [Synapse](https://github.com/vertexproject/synapse) "appliance" (docker compose script(s) to run Synapse/Storm Services on one machine). The goal is to provide an easy way to run all core Synapse Services in one go + optionally some supported community Storm Services. Minimal interaction will be required to register services with Aha. And of course, configuration tweaking will likely be needed to suit your environment (especially the network ranges).
 
 The project is split into 3 docker compose files that build on eachother.
-1. `aha/compose.yaml` - run the Synapse Aha server to initialize an environment.
+1. `aha/compose.yml` - run the Synapse Aha server to initialize an environment.
     - This has to run first so the remaining servers can register with it
     - Post-install the compose script sleeps for a time then runs multiple commands to generate the Aha registration URLs for the core services.
-        - The command outputs are written to a .env.aha file that's copied out of the container and supersede's runes .env file
+        - Registration URLs are saved directly to `/srv/syn/.env`, replacing any previous values for those services.
     - You can always skip this, setup your own Aha server, and generate your own registration URLs for the next step.
 2. `core/compose.yaml` - run only the core [Synapse Services](https://synapse.docs.vertex.link/en/latest/synapse/glossary.html#gloss-svc-synapse) published by The Vertex Project.
     - This is the "Synapse appliance".
@@ -14,7 +14,7 @@ The project is split into 3 docker compose files that build on eachother.
     - Cortex, JSONStor, Axon
 3. `svcs/compose.yaml` - run a currated list of community [Storm Services](https://synapse.docs.vertex.link/en/latest/synapse/glossary.html#service-storm) + installs several community Storm Rapid Power-Ups directly onto your Cortex.
     - Requires some bootstrap scripts to run first to generate Aha registration URLs.
-        - Uses the same `.env.aha` naming scheme as the core script, just unique to the services in this script instead.
+        - Registration URLs for these services are also saved directly to `/srv/syn/.env`.
     - Starts the following community Storm Services:
         - yarastorm
         - ip_api
@@ -43,7 +43,7 @@ The compose files setup a custom network so that everything can talk to eachothe
 
 Since docker cannot control domain names on a network, you're responsible for making sure that the Aha service has a DNS record somewhere your clients can reach. However, the benefit of using a shared docker network is that all containers can resolve IPs via the container name. So, the appliance setup works without assigning any DNS records.
 
-In order to enable clients to talk to containers on the host, a docker network is created using `macvlan`. So the project requires you to pass the network device used for setup. This also means that each container get's it's own IP address. By default, the project uses `10.10.10.64/28` and assigns IPs sequentially in the order services are defined. These can be configured in the project's `.env` file - when starting a 2nd mirror appliance these IPs need to be changed from whatever is used on the primary.
+In order to enable clients to talk to containers on the host, a docker network is created using `macvlan`. So the project requires you to pass the network device used for setup. This also means that each container get's it's own IP address. By default, the project uses `10.10.10.64/28` and assigns IPs sequentially in the order services are defined. These can be configured in `/srv/syn/.env` - when starting a 2nd mirror appliance these IPs need to be changed from whatever is used on the primary.
 
 ## Filesystem
 
@@ -54,37 +54,43 @@ However, since we're only working on 3 docker compose files, you'll need to mana
 To access the Aha container (assuming it has a service name of `00.aha`):
 ```bash
 cd /srv/syn/core/00.aha/
-docker compose exec 00.aha /bin/bash
+docker compose exec aha_service /bin/bash
 ```
 
 To access the Cortex container (assuming it has a service name of `00.cortex`):
 ```bash
 cd /srv/syn/core/
-docker compose exec 00.cortex /bin/bash
+docker compose exec cortex_service /bin/bash
 ```
 
 To access the yarastorm container (assuming it has a service name of `00.yarastorm`):
 ```bash
 cd /srv/syn/svcs/
-docker compose exec 00.yarastorm /bin/bash
+docker compose exec yarastorm_service /bin/bash
 ```
 
-### `.env` files
+### Shared Configuration
 
-The `.env` file in the root of this project at runtime, is copied to `/srv/syn/.env`. All compose files reference it. See Configuration>Overrides below for more details.
+`/srv/syn/.env` is the only runtime configuration file. Bootstrap seeds it once from the repository's `.env`, if present, otherwise from `.env.example`. Existing canonical configuration is never replaced by the repository copy. After bootstrap, make all configuration changes in `/srv/syn/.env`; the repository's `.env` is no longer used.
+
+Bootstrap creates `.env` symlinks in `/srv/syn/core` and `/srv/syn/svcs`. Aha startup also creates one in `/srv/syn/core/${AHA_SERVICE_NAME}`. Docker Compose reads these symlinks for interpolation, including when you run Compose directly in a deployed directory. Each Compose service explicitly maps the settings it needs into its container; the shared file is not injected wholesale into containers.
 
 # Starting the appliance
 
 If not already installed, setup [docker](https://docs.docker.com/engine/install/debian/) on the host.
 
+The configured `SVC_USER` must already exist. Run the scripts as that user or an account in its group, with Docker access and noninteractive sudo permission for the setup commands and service-user operations. Newly created `/srv/syn/.env` files are owned by `SVC_USER` and its matching group with mode `0640`. Keep this file readable only by trusted operators: it contains one-time provisioning URLs.
+
 To start everything in one go, do the following:
 ```bash
 git clone https://github.com/gormaniac/rune.git
 cd rune
-# edit the .env configuration file as needed
-# mv .env.example .env && code .env
+cp .env.example .env
+# edit .env for initial setup, including SVC_USER and networking
 ./rune.sh
 ```
+
+On an existing installation, edit `/srv/syn/.env` instead. The `.env.example` template is never moved or modified by bootstrap.
 
 ## Deploying separately/on multiple hosts
 
@@ -96,9 +102,9 @@ If you'd like to start each compose file seperately (separate host deployments, 
     cd rune/
     ```
 
-2. Edit the `.env.example` configuration file as needed - rename it to `.env`.
+2. Copy the example configuration and edit it for initial setup. For an existing installation, edit `/srv/syn/.env` instead.
     ```bash
-    mv .env.example .env && code .env
+    cp .env.example .env && code .env
     ```
 
 3. Run the bootstrap script - do this once on every host.
@@ -112,11 +118,7 @@ If you'd like to start each compose file seperately (separate host deployments, 
     ./run.sh
     ```
 
-5. Ensure the Aha service output an `.env.aha` file - move it to the `core` host if using a separate hosts:
-    ```bash
-    # Should see Aha registration URLs for the Cortex, Axon, and JSONStor.
-    cat ../core/.env.aha
-    ```
+5. Aha startup saves `AXON_AHA_REG_URL`, `JSONSTOR_AHA_REG_URL`, and `CORTEX_AHA_REG_URL` in `/srv/syn/.env`. If core services run on a different host, securely transfer those values into that host's `/srv/syn/.env`, retaining its host-specific networking settings.
 
 6. Start the Core Synapse Services:
     ```bash
@@ -133,13 +135,13 @@ If you'd like to start each compose file seperately (separate host deployments, 
     ./install_storm.sh
     ```
 
-    The above command for step 7 assumes you're running the optional Storm Services on the same host as the Aha server. If you're not, you'll   need to copy the `bootstrap_aha.sh` script to     the host running the Aha container and run it.  Then copy the output `.env.aha` file to the  `svcs/` directory before running `svcs/run.sh`. 
+    Step 7 assumes the optional Storm Services run on the same host as Aha. Otherwise, run `svcs/register_svcs.sh` from a checkout on the Aha host, then securely transfer `IPAPI_AHA_REG_URL` and `YARASTORM_AHA_REG_URL` into the services host's `/srv/syn/.env`. Start them with `./run.sh --skip-aha` to avoid attempting local registration.
 
     The same is true with the `./install_storm.sh`  script. If the Cortex is on a separate host, you'll need to copy this to that host and run it    there.
 
 # Configuration
 
-Everything is configured via a `.env` file at the root of the project. A `.env.example` file is included in the project. It's designed to be a completely featured default file that can be copied as is to `.env` and run. The example and the containers have commented out code to support root password generation. More service configuration can be done via adding variables to the `.env` file and call those values in the relevant `compose.yaml` file as environment variables. See each service's documentation for configuration options. 
+Everything is configured via `/srv/syn/.env`. The included `.env.example` provides initial defaults; bootstrap can use it directly or seed from a customized repository `.env`. Add service-specific variables to `/srv/syn/.env` and reference them explicitly in the relevant Compose service's `environment` section. Keep the file compatible with both Bash sourcing and Docker Compose interpolation. See each service's documentation for configuration options.
 
 The project tries to use default service configurations wherever possible; however, there's some custom configuration options used (like always starting an HTTP API for each service).
 
@@ -161,15 +163,21 @@ There are 3 configuration variables you will likely ***always*** have to change 
     - Where `*` is the service name minus the numeral prefix (ie `CORTEX` for the service `00.cortex`).
     - `GATEWAY_IP_ADDRESS` is not tied to a service but is the gateway IP assigned to the network.
 
-## Overrides
+## Configuration Updates
 
-Every compose script opens `/srv/syn/.env` as the master .env file for configuration. This is copied from the `.env` file present at the root of this project when `rune.sh`/`bootstrap.sh` are executed on a host. However, ocassionally, you may wish to override some shared value for a specific service only. In this case, drop a `.env.override` file in the same directory as the docker compose file with the specific values you wish to change. It is read as optional by every compose script.
+Use service-specific keys in `/srv/syn/.env` when a service needs a different setting. There are no separate override files. The `--aha-domain` and `--dev-name` bootstrap options update the canonical file directly, including on an existing installation.
 
-It is prefered to make an edit to the master `.env` file that is unique to your service, the intention is for it to remain a one stop shop for environment variables.
+For upgrades from the previous layout, manually merge any still-needed values from old registration or override files into `/srv/syn/.env`. These files are no longer read, and are not automatically merged or deleted. If a deployed Compose directory already has a regular `.env` file, move its settings into the canonical file and remove the local file before starting the scripts; they will not overwrite it with a symlink.
 
-## The `.env.aha` file
+## Aha Registration
 
-The Core and Services compose files will additionally read a `.env.aha` file from their own directory. It is listed as required since it sets an environment variable within each container that unfortunately needs to be there. However, it only needs to be there at first run. After initial install, you can go edit the compose files and remove this dependency if you wish.
+Aha startup writes the core services' registration URLs into `/srv/syn/.env`. Optional-service startup registers its services and writes their URLs into the same file before loading the updated configuration. Repeated registration replaces each existing key instead of appending duplicates. Launchers fail before stopping containers if required registration values are empty.
+
+Use `svcs/run.sh --skip-aha` when registration values are already configured and local registration should be skipped. Provisioning URLs are one-time credentials, not reusable tokens; a new service instance may need a newly generated URL. Provisioned services retain their certificates in persistent storage.
+
+## Verification
+
+Run `bash tests/env.sh` for isolated configuration and registration tests. The suite uses temporary deployment paths and mocks privileged/deployment commands; it never starts containers or modifies `/srv/syn`. If Docker Compose is installed, it also validates all three deployed configurations against the shared `.env` symlinks.
 
 ## Secrets
 

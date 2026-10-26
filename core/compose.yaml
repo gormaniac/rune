@@ -79,11 +79,3 @@ networks:
   syn_net:
     external: true
     name: ${NETWORK_NAME}
-
-env_file:
-  - path: ../../.env
-    required: true
-  - path: ./.env.aha
-    required: true
-  - path: ./.env.override
-    required: false

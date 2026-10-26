@@ -7,33 +7,19 @@ if [[ "${EUID:-$(id -u)}" -eq 0 ]] && [[ "${RUNE_ALLOW_ROOT:-0}" != "1" ]]; then
     exit 1
 fi
 
-# If .env isn't present, copy .env.example to .env and use default values.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/env.sh"
 
-if [[ ! -f "$SCRIPT_DIR/.env" ]]; then
-  mv "$SCRIPT_DIR/.env.example" "$SCRIPT_DIR/.env"
-fi
-
-set -o allexport
-source "$SCRIPT_DIR/.env"
-set +o allexport
-
-# Command-line args override values sourced from .env.
-_AHA_DOMAIN_GIVEN=0
-_NETWORK_DEVICE_GIVEN=0
-for arg in "$@"; do
-  case "$arg" in
-    --dev-name=*)   NETWORK_DEVICE="${arg#*=}"; _NETWORK_DEVICE_GIVEN=1 ;;
-    --aha-domain=*) AHA_DOMAIN="${arg#*=}"; _AHA_DOMAIN_GIVEN=1 ;;
-  esac
-done
-
-if (( _AHA_DOMAIN_GIVEN )); then
-  sed -i '' "s/^AHA_DOMAIN=.*/AHA_DOMAIN=$AHA_DOMAIN/" "$SCRIPT_DIR/.env"
-fi
-
-if (( _NETWORK_DEVICE_GIVEN )); then
-  sed -i '' "s/^NETWORK_DEVICE=.*/NETWORK_DEVICE=$NETWORK_DEVICE/" "$SCRIPT_DIR/.env"
+if [[ -f "$RUNE_ENV_FILE" ]]; then
+  rune_env_load
+else
+  SEED_FILE="$SCRIPT_DIR/.env"
+  if [[ ! -f "$SEED_FILE" ]]; then
+    SEED_FILE="$SCRIPT_DIR/.env.example"
+  fi
+  set -o allexport
+  source "$SEED_FILE"
+  set +o allexport
 fi
 
 # TODO - Do we want to control this actually? Have bootstrap create the user if needed?
@@ -55,13 +41,22 @@ if ! docker info >/dev/null 2>&1; then
     exit 1
 fi
 
+if [[ ! -f "$RUNE_ENV_FILE" ]]; then
+  sudo -n mkdir -p /srv/syn
+  sudo -n chown "$SVC_USER":"$SVC_USER" /srv/syn
+  sudo -n install -o "$SVC_USER" -g "$SVC_USER" -m 640 "$SEED_FILE" "$RUNE_ENV_FILE"
+fi
+
+for arg in "$@"; do
+  case "$arg" in
+    --dev-name=*) rune_env_set NETWORK_DEVICE "${arg#*=}" ;;
+    --aha-domain=*) rune_env_set AHA_DOMAIN "${arg#*=}" ;;
+  esac
+done
+rune_env_load
+rune_env_link /srv/syn/core
+rune_env_link /srv/syn/svcs
+
 # Create the docker macvlan network
 docker network create -d macvlan --subnet="$NETWORK_CIDR" --gateway="$GATEWAY_IP_ADDRESS" \
-  -o parent="$NETWORK_DEVICE" $NETWORK_NAME
-
-# Create the parent /srv/syn directory and set ownership to the service user.
-sudo mkdir -p /srv/syn
-sudo chown -R "$SVC_USER":"$SVC_USER" /srv/syn
-
-# Copy the .env file into /srv/syn so all services can access it.
-cp "$SCRIPT_DIR/.env" /srv/syn/.env
+  -o parent="$NETWORK_DEVICE" "$NETWORK_NAME"
