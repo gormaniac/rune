@@ -29,53 +29,6 @@ The project is split into 3 docker compose files that build on eachother.
         - [utils](https://github.com/gormaniac/stormlibpp/tree/main/src/pkgs/utils)
         - [stix](https://github.com/gormaniac/stormlibpp/tree/main/src/pkgs/stix)
 
-# Architecture
-
-This project creates an "appliance" for running services so, containers expect to all be run on the same host. However, it's possible to split each compose script and run them each on a separate host. Some networking changes will need to be made to accomodate.
-
-Reference [Synapse's own docs](https://synapse.docs.vertex.link/en/latest/synapse/deploymentguide.html#introduction) for more info on their service's deployment architecture. In short, the Aha service allows everything to talk to eachother, the Cortex is the main querying and writing service, and the remainder is support. Everything needs to be able to talk to eachother (with some exception, change this at your own risk), but only the Aha service needs a domain name. The community Storm Services will also need to be able to talk to Aha and the core Synapse Services.
-
-No mirrors or query pools are configured in these scripts, given the "appliance" nature if the host fails so would both the primary and mirror together. There's also limited resources on the same host. So while they might still have value for upgrades, container failures, etc., they're skipped in this project. The configuration does have a `PREFIX` variable to make it easy to setup a 2nd full appliance and register these services as mirrors.
-
-## Networking
-
-The compose files setup a custom network so that everything can talk to eachother - `rune-network`. IPs are assigned to each container so that clients can communicate with the services. These can be set within the `.env` configuration file.
-
-Since docker cannot control domain names on a network, you're responsible for making sure that the Aha service has a DNS record somewhere your clients can reach. However, the benefit of using a shared docker network is that all containers can resolve IPs via the container name. So, the appliance setup works without assigning any DNS records.
-
-In order to enable clients to talk to containers on the host, a docker network is created using `macvlan`. So the project requires you to pass the network device used for setup. This also means that each container get's it's own IP address. By default, the project uses `10.10.10.64/28` and assigns IPs sequentially in the order services are defined. These can be configured in `/srv/syn/.env` - when starting a 2nd mirror appliance these IPs need to be changed from whatever is used on the primary.
-
-## Filesystem
-
-Synapse/Storm Services require persistant storage. Each service uses a docker volume mapped to `/vertex/storage` on the container. On the host side, each service get's a directory under `/srv/syn`. Core Synapse Services (including Aha) live under `/srv/syn/core` and Storm Services live under `/srv/syn/svcs`.
-
-Containers run as UID `999`, while `SVC_USER` manages host configuration and Compose files. Before startup, launchers recursively assign each service's storage tree to UID `999` and grant its owner access to the storage directory. This also repairs existing storage ownership without changing `/srv/syn/.env` or configuration ownership. This assumes normal rootful Docker UID mapping; rootless Docker or user-namespace remapping requires corresponding host ownership adjustments.
-
-However, since we're only working on 3 docker compose files, you'll need to manage the Aha service from `/srv/syn/core/${AHA_SERVICE_NAME}/`, all of the other core Synapse Services from `/srv/syn/core`, and all of the Storm Services from `/srv/syn/svcs`. In other words...
-
-To access the Aha container (assuming it has a service name of `00.aha`):
-```bash
-cd /srv/syn/core/00.aha/
-docker compose exec aha_service /bin/bash
-```
-
-To access the Cortex container (assuming it has a service name of `00.cortex`):
-```bash
-cd /srv/syn/core/
-docker compose exec cortex_service /bin/bash
-```
-
-To access the yarastorm container (assuming it has a service name of `00.yarastorm`):
-```bash
-cd /srv/syn/svcs/
-docker compose exec yarastorm_service /bin/bash
-```
-
-### Shared Configuration
-
-`/srv/syn/.env` is the only runtime configuration file. Bootstrap seeds it once from the repository's `.env`, if present, otherwise from `.env.example`. Existing canonical configuration is never replaced by the repository copy. After bootstrap, make all configuration changes in `/srv/syn/.env`; the repository's `.env` is no longer used.
-
-Bootstrap creates `.env` symlinks in `/srv/syn/core` and `/srv/syn/svcs`. Aha startup also creates one in `/srv/syn/core/${AHA_SERVICE_NAME}`. Docker Compose reads these symlinks for interpolation, including when you run Compose directly in a deployed directory. Each Compose service explicitly maps the settings it needs into its container; the shared file is not injected wholesale into containers.
 
 # Starting the appliance
 
@@ -186,3 +139,52 @@ Run `bash tests/env.sh` for isolated configuration and registration tests. The s
 ## Secrets
 
 Rune does not support injecting any secrets to containers at any time by default. This is intentional, mostly because Aha supports cert based auth and users should be encouraged to rely on that. But also because it overly complicates the spirit of this project - starting a fully featured open-source Synapse instance with as little user input as possible. Secrets should be managed seperately from env vars, and some users may wish to remove secrets from a host post-install. For more involved deployments that wish to rely on this project and use secrets, manual editing of the `.env` file and the docker compose scripts is needed. I'd recommend starting by using `.env` to define paths on the host where secrets are stored/injected and then relying on Docker's `secrets` feature in the compose script which reference the paths in `.env`.
+
+
+# Architecture
+
+This project creates an "appliance" for running services so, containers expect to all be run on the same host. However, it's possible to split each compose script and run them each on a separate host. Some networking changes will need to be made to accomodate.
+
+Reference [Synapse's own docs](https://synapse.docs.vertex.link/en/latest/synapse/deploymentguide.html#introduction) for more info on their service's deployment architecture. In short, the Aha service allows everything to talk to eachother, the Cortex is the main querying and writing service, and the remainder is support. Everything needs to be able to talk to eachother (with some exception, change this at your own risk), but only the Aha service needs a domain name. The community Storm Services will also need to be able to talk to Aha and the core Synapse Services.
+
+No mirrors or query pools are configured in these scripts, given the "appliance" nature if the host fails so would both the primary and mirror together. There's also limited resources on the same host. So while they might still have value for upgrades, container failures, etc., they're skipped in this project. The configuration does have a `PREFIX` variable to make it easy to setup a 2nd full appliance and register these services as mirrors.
+
+## Networking
+
+The compose files setup a custom network so that everything can talk to eachother - `rune-network`. IPs are assigned to each container so that clients can communicate with the services. These can be set within the `.env` configuration file.
+
+Since docker cannot control domain names on a network, you're responsible for making sure that the Aha service has a DNS record somewhere your clients can reach. However, the benefit of using a shared docker network is that all containers can resolve IPs via the container name. So, the appliance setup works without assigning any DNS records.
+
+In order to enable clients to talk to containers on the host, a docker network is created using `macvlan`. So the project requires you to pass the network device used for setup. This also means that each container get's it's own IP address. By default, the project uses `10.10.10.64/28` and assigns IPs sequentially in the order services are defined. These can be configured in `/srv/syn/.env` - when starting a 2nd mirror appliance these IPs need to be changed from whatever is used on the primary.
+
+## Filesystem
+
+Synapse/Storm Services require persistant storage. Each service uses a docker volume mapped to `/vertex/storage` on the container. On the host side, each service get's a directory under `/srv/syn`. Core Synapse Services (including Aha) live under `/srv/syn/core` and Storm Services live under `/srv/syn/svcs`.
+
+Containers run as UID `999`, while `SVC_USER` manages host configuration and Compose files. Before startup, launchers recursively assign each service's storage tree to UID `999` and grant its owner access to the storage directory. This also repairs existing storage ownership without changing `/srv/syn/.env` or configuration ownership. This assumes normal rootful Docker UID mapping; rootless Docker or user-namespace remapping requires corresponding host ownership adjustments.
+
+However, since we're only working on 3 docker compose files, you'll need to manage the Aha service from `/srv/syn/core/${AHA_SERVICE_NAME}/`, all of the other core Synapse Services from `/srv/syn/core`, and all of the Storm Services from `/srv/syn/svcs`. In other words...
+
+To access the Aha container (assuming it has a service name of `00.aha`):
+```bash
+cd /srv/syn/core/00.aha/
+docker compose exec aha_service /bin/bash
+```
+
+To access the Cortex container (assuming it has a service name of `00.cortex`):
+```bash
+cd /srv/syn/core/
+docker compose exec cortex_service /bin/bash
+```
+
+To access the yarastorm container (assuming it has a service name of `00.yarastorm`):
+```bash
+cd /srv/syn/svcs/
+docker compose exec yarastorm_service /bin/bash
+```
+
+### Shared Configuration
+
+`/srv/syn/.env` is the only runtime configuration file. Bootstrap seeds it once from the repository's `.env`, if present, otherwise from `.env.example`. Existing canonical configuration is never replaced by the repository copy. After bootstrap, make all configuration changes in `/srv/syn/.env`; the repository's `.env` is no longer used.
+
+Bootstrap creates `.env` symlinks in `/srv/syn/core` and `/srv/syn/svcs`. Aha startup also creates one in `/srv/syn/core/${AHA_SERVICE_NAME}`. Docker Compose reads these symlinks for interpolation, including when you run Compose directly in a deployed directory. Each Compose service explicitly maps the settings it needs into its container; the shared file is not injected wholesale into containers.

@@ -123,6 +123,7 @@ bash "$REPO/svcs/register_svcs.sh"
 [[ "$(grep -c '^IPAPI_AHA_REG_URL=' "$RUNE_ENV_FILE")" == 1 ]] || fail "repeat registration appended keys"
 bash "$REPO/svcs/install_storm.sh"
 [[ "$(grep -c 'exec -T cortex_service' "$TEST_DOCKER_LOG")" == 4 ]] || fail "package installation used wrong core service"
+[[ "$(grep -c 'pkg.load --raw https://github.com/gormaniac/stormlibpp/releases/latest/download/' "$TEST_DOCKER_LOG")" == 4 ]] || fail "package installation did not load raw release assets"
 
 printf '%s\n' "$RUNE_ENV_FILE" > "$TEMPORARY/expected-target"
 cp "$RUNE_ENV_FILE" "$TEMPORARY/before"
