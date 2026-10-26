@@ -16,22 +16,22 @@ services:
         - HTTPS_PORT=4443
         - AHA_PROVISION=${IPAPI_AHA_REG_URL}
 
-  yarastorm_service:
-    user: "999"
-    container_name: ${YARASTORM_SERVICE_NAME}
-    image: ghcr.io/gormaniac/stormsvcs/yarastorm:latest
-    restart: unless-stopped
-    volumes:
-        - yarastorm_volume:/vertex/storage
-    networks:
-      syn_net:
-        ipv4_address: ${YARASTORM_IP_ADDRESS}
-    ports:
-      - "${HTTPS_PORT}:4443"
-      - "27492:27492"
-    environment:
-        - HTTPS_PORT=4443
-        - AHA_PROVISION=${YARASTORM_AHA_REG_URL}
+#   yarastorm_service:
+#     user: "999"
+#     container_name: ${YARASTORM_SERVICE_NAME}
+#     image: ghcr.io/gormaniac/stormsvcs/yarastorm:latest
+#     restart: unless-stopped
+#     volumes:
+#         - yarastorm_volume:/vertex/storage
+#     networks:
+#       syn_net:
+#         ipv4_address: ${YARASTORM_IP_ADDRESS}
+#     ports:
+#       - "${HTTPS_PORT}:4443"
+#       - "27492:27492"
+#     environment:
+#         - HTTPS_PORT=4443
+#         - AHA_PROVISION=${YARASTORM_AHA_REG_URL}
 
 volumes:
   ipapi_volume:
@@ -41,13 +41,13 @@ volumes:
       type: none
       o: bind
       device: /srv/syn/svcs/${IPAPI_SERVICE_NAME}/storage
-  yarastorm_volume:
-    name: ${YARASTORM_SERVICE_NAME}
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: /srv/syn/svcs/${YARASTORM_SERVICE_NAME}/storage
+#  yarastorm_volume:
+#    name: ${YARASTORM_SERVICE_NAME}
+#    driver: local
+#    driver_opts:
+#      type: none
+#      o: bind
+#      device: /srv/syn/svcs/${YARASTORM_SERVICE_NAME}/storage
 
 networks:
   syn_net:
