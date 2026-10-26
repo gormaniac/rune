@@ -6,30 +6,24 @@ echo "📣 Starting the Core Synapse Services..."
 SOURCE_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 SRV_DIR="/srv/syn/core/"
 
-set -o allexport
-source "$SOURCE_DIR/../.env"
-set +o allexport
+source "$SOURCE_DIR/../env.sh"
+rune_env_load
+rune_env_require AXON_AHA_REG_URL JSONSTOR_AHA_REG_URL CORTEX_AHA_REG_URL
+rune_env_link "$SRV_DIR"
 
-if [[ ! -f "$SOURCE_DIR/.env.aha" ]]; then
-  echo "⚠️ Error: .env.aha not found in $SOURCE_DIR" >&2
-  exit 1
-fi
-
-sudo -u "$SVC_USER" cp -r "$SOURCE_DIR/.env.aha" "$SRV_DIR/.env.aha"
-
-# Make the storage directories for each service, ensuring they are owned by the SVC_USER.
+# Prepare storage for the container UID, separate from service-user configuration.
 for svc in "${AXON_SERVICE_NAME}" "${JSONSTOR_SERVICE_NAME}" "${CORTEX_SERVICE_NAME}"; do
-  sudo -u "$SVC_USER" mkdir -p "$SRV_DIR/$svc/storage"
+  rune_storage_prepare "${SRV_DIR%/}/$svc/storage"
 done
 
-# Copy the compose.yml file to the /srv/syn/core/ directory, ensuring it is owned by the SVC_USER.
-sudo -u "$SVC_USER" cp -r "$SOURCE_DIR/compose.yml" "$SRV_DIR/compose.yml"
+# Copy the compose.yaml file to the /srv/syn/core/ directory, ensuring it is owned by the SVC_USER.
+sudo -n -u "$SVC_USER" cp "$SOURCE_DIR/compose.yaml" "$SRV_DIR/compose.yaml"
 
 # Pull the latest images for the Core Synapse Services and their dependencies.
-docker compose -f "$SRV_DIR/compose.yml" pull
+docker compose -f "$SRV_DIR/compose.yaml" pull
 
 # Start the Core Synapse Services in detached mode, killing them first if they are already running.
-docker compose -f "$SRV_DIR/compose.yml" down
-docker compose -f "$SRV_DIR/compose.yml" up -d
+docker compose -f "$SRV_DIR/compose.yaml" down
+docker compose -f "$SRV_DIR/compose.yaml" up -d
 
 echo "✅ Core Synapse Services started successfully."
