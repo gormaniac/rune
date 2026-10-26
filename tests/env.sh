@@ -24,6 +24,12 @@ fail() {
     exit 1
 }
 
+check_storage_path() {
+    local compose="$1" group="$2" key="$3"
+    grep -Fxq "      device: /srv/syn/$group/\${$key}/storage" "$ROOT/$compose" || fail "$compose has the wrong storage path for $key"
+    [[ -d "$DEPLOY/$group/${!key}/storage" ]] || fail "launcher did not create storage for $key"
+}
+
 expect_failure() {
     if "$@" > "$TEMPORARY/failure.log" 2>&1; then
         fail "expected command to fail: $*"
@@ -132,6 +138,14 @@ bash "$REPO/aha/run.sh"
 bash "$REPO/core/run.sh"
 bash "$REPO/svcs/run.sh"
 rune_env_load
+
+check_storage_path aha/compose.yml core AHA_SERVICE_NAME
+check_storage_path core/compose.yaml core AXON_SERVICE_NAME
+check_storage_path core/compose.yaml core JSONSTOR_SERVICE_NAME
+check_storage_path core/compose.yaml core CORTEX_SERVICE_NAME
+check_storage_path svcs/compose.yaml svcs IPAPI_SERVICE_NAME
+check_storage_path svcs/compose.yaml svcs YARASTORM_SERVICE_NAME
+echo 'PASS: all six volume paths match launcher-created storage directories'
 
 echo 'PASS: canonical initialization, CLI overrides, registration updates, reload, skip-aha, symlinks, and permissions'
 

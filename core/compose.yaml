@@ -59,21 +59,21 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: /srv/syn/${AXON_SERVICE_NAME}/storage
+      device: /srv/syn/core/${AXON_SERVICE_NAME}/storage
   jsonstor_volume:
     name: ${JSONSTOR_SERVICE_NAME}
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: /srv/syn/${JSONSTOR_SERVICE_NAME}/storage
+      device: /srv/syn/core/${JSONSTOR_SERVICE_NAME}/storage
   cortex_volume:
     name: ${CORTEX_SERVICE_NAME}
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: /srv/syn/${CORTEX_SERVICE_NAME}/storage
+      device: /srv/syn/core/${CORTEX_SERVICE_NAME}/storage
 
 networks:
   syn_net:

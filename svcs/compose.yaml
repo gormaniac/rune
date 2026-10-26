@@ -40,14 +40,14 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: /srv/syn/${IPAPI_SERVICE_NAME}/storage
+      device: /srv/syn/svcs/${IPAPI_SERVICE_NAME}/storage
   yarastorm_volume:
     name: ${YARASTORM_SERVICE_NAME}
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: /srv/syn/${YARASTORM_SERVICE_NAME}/storage
+      device: /srv/syn/svcs/${YARASTORM_SERVICE_NAME}/storage
 
 networks:
   syn_net:
