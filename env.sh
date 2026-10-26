@@ -37,6 +37,13 @@ rune_env_link() {
     sudo -n -u "$SVC_USER" ln -sfn "$RUNE_ENV_FILE" "$directory/.env"
 }
 
+rune_storage_prepare() {
+    local directory="$1"
+    sudo -n -u "$SVC_USER" mkdir -p "$directory"
+    sudo -n chown -R 999 "$directory"
+    sudo -n chmod u+rwx "$directory"
+}
+
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
     set -euo pipefail
     key="${1:-}"

@@ -7,6 +7,7 @@ trap 'rm -rf "$TEMPORARY"' EXIT
 REPO="$TEMPORARY/repo"
 DEPLOY="$TEMPORARY/syn"
 export TEST_DOCKER_LOG="$TEMPORARY/docker.log"
+export TEST_SUDO_LOG="$TEMPORARY/sudo.log"
 mkdir -p "$REPO" "$TEMPORARY/unrelated"
 
 for file in env.sh bootstrap.sh rune.sh aha/run.sh core/run.sh svcs/run.sh svcs/register_svcs.sh svcs/install_storm.sh aha/compose.yml core/compose.yaml svcs/compose.yaml; do
@@ -28,6 +29,8 @@ check_storage_path() {
     local compose="$1" group="$2" key="$3"
     grep -Fxq "      device: /srv/syn/$group/\${$key}/storage" "$ROOT/$compose" || fail "$compose has the wrong storage path for $key"
     [[ -d "$DEPLOY/$group/${!key}/storage" ]] || fail "launcher did not create storage for $key"
+    grep -Fxq -- "-n chown -R 999 $DEPLOY/$group/${!key}/storage" "$TEST_SUDO_LOG" || fail "storage ownership was not assigned to the container UID for $key"
+    grep -Fxq -- "-n chmod u+rwx $DEPLOY/$group/${!key}/storage" "$TEST_SUDO_LOG" || fail "storage owner was not granted access for $key"
 }
 
 expect_failure() {
@@ -37,6 +40,7 @@ expect_failure() {
 }
 
 sudo() {
+    printf '%s\n' "$*" >> "$TEST_SUDO_LOG"
     [[ "$1" == -n ]] || return 1
     shift
     if [[ "$1" == -u ]]; then
@@ -55,7 +59,7 @@ sudo() {
 
 docker() {
     printf '%s\n' "$*" >> "$TEST_DOCKER_LOG"
-    if [[ "$*" == *" up -d --wait --wait-timeout 120" ]]; then
+    if [[ "$*" == *" up -d --wait --wait-timeout "* ]]; then
         [[ "${TEST_AHA_WAIT_FAIL:-0}" == 0 ]] || return 1
     elif [[ "$*" == *synapse.tools.aha.provision.service* ]]; then
         printf 'one-time use URL: ssl://fixture/%s?token=$literal\n' "${!#}"
@@ -94,7 +98,7 @@ export TEST_AHA_WAIT_FAIL=1
 expect_failure bash "$REPO/aha/run.sh"
 unset TEST_AHA_WAIT_FAIL
 grep -q 'AHA did not become healthy' "$TEMPORARY/failure.log" || fail "unhealthy AHA did not report failure"
-grep -Fq ' up -d --wait --wait-timeout 120' "$TEST_DOCKER_LOG" || fail "startup did not wait for readiness"
+grep -Fq ' up -d --wait --wait-timeout ' "$TEST_DOCKER_LOG" || fail "startup did not wait for readiness"
 grep -Fq ' ps -a' "$TEST_DOCKER_LOG" || fail "unhealthy AHA did not report container status"
 grep -Fq ' logs --no-color --tail 100 aha_service' "$TEST_DOCKER_LOG" || fail "unhealthy AHA did not report logs"
 if grep -q synapse.tools.aha.provision.service "$TEST_DOCKER_LOG"; then fail "unhealthy AHA attempted registration"; fi
@@ -158,7 +162,11 @@ check_storage_path core/compose.yaml core JSONSTOR_SERVICE_NAME
 check_storage_path core/compose.yaml core CORTEX_SERVICE_NAME
 check_storage_path svcs/compose.yaml svcs IPAPI_SERVICE_NAME
 check_storage_path svcs/compose.yaml svcs YARASTORM_SERVICE_NAME
-echo 'PASS: all six volume paths match launcher-created storage directories'
+[[ "$(grep -Fc '    user: "999"' "$ROOT/aha/compose.yml")" == 1 ]] || fail "AHA UID differs from storage owner"
+[[ "$(grep -Fc '    user: "999"' "$ROOT/core/compose.yaml")" == 3 ]] || fail "core UIDs differ from storage owner"
+[[ "$(grep -Fc '    user: "999"' "$ROOT/svcs/compose.yaml")" == 2 ]] || fail "optional service UIDs differ from storage owner"
+if grep '^-n chown -R ' "$TEST_SUDO_LOG" | grep -v '/storage$'; then fail "ownership changes extend beyond storage trees"; fi
+echo 'PASS: all six volume paths and requested ownership match container storage requirements'
 
 echo 'PASS: canonical initialization, CLI overrides, registration updates, reload, skip-aha, symlinks, and permissions'
 

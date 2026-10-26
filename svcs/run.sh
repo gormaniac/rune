@@ -22,9 +22,9 @@ fi
 rune_env_require IPAPI_AHA_REG_URL YARASTORM_AHA_REG_URL
 rune_env_link "$SRV_DIR"
 
-# Make the storage directories for each service, ensuring they are owned by the SVC_USER.
+# Prepare storage for the container UID, separate from service-user configuration.
 for svc in "${IPAPI_SERVICE_NAME}" "${YARASTORM_SERVICE_NAME}"; do
-  sudo -n -u "$SVC_USER" mkdir -p "$SRV_DIR/$svc/storage"
+  rune_storage_prepare "${SRV_DIR%/}/$svc/storage"
 done
 
 # Copy the compose.yaml file to the /srv/syn/svcs/ directory, ensuring it is owned by the SVC_USER.

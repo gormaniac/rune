@@ -11,7 +11,7 @@ rune_env_load
 SRV_DIR="/srv/syn/core/${AHA_SERVICE_NAME}/"
 rune_env_link "$SRV_DIR"
 
-sudo -n -u "$SVC_USER" mkdir -p "$SRV_DIR/storage"
+rune_storage_prepare "${SRV_DIR%/}/storage"
 sudo -n -u "$SVC_USER" cp "$SOURCE_DIR/compose.yml" "$SRV_DIR/compose.yml"
 
 # Pull the latest images for the AHA service and its dependencies.

@@ -49,6 +49,8 @@ In order to enable clients to talk to containers on the host, a docker network i
 
 Synapse/Storm Services require persistant storage. Each service uses a docker volume mapped to `/vertex/storage` on the container. On the host side, each service get's a directory under `/srv/syn`. Core Synapse Services (including Aha) live under `/srv/syn/core` and Storm Services live under `/srv/syn/svcs`.
 
+Containers run as UID `999`, while `SVC_USER` manages host configuration and Compose files. Before startup, launchers recursively assign each service's storage tree to UID `999` and grant its owner access to the storage directory. This also repairs existing storage ownership without changing `/srv/syn/.env` or configuration ownership. This assumes normal rootful Docker UID mapping; rootless Docker or user-namespace remapping requires corresponding host ownership adjustments.
+
 However, since we're only working on 3 docker compose files, you'll need to manage the Aha service from `/srv/syn/core/${AHA_SERVICE_NAME}/`, all of the other core Synapse Services from `/srv/syn/core`, and all of the Storm Services from `/srv/syn/svcs`. In other words...
 
 To access the Aha container (assuming it has a service name of `00.aha`):
@@ -171,7 +173,7 @@ For upgrades from the previous layout, manually merge any still-needed values fr
 
 ## Aha Registration
 
-Aha startup uses Docker Compose's `up --wait --wait-timeout` support to wait up to 120 seconds for its health check to pass. Use a Compose version supporting those options. If startup fails or Aha remains unhealthy, the script prints container status and the last 100 log lines, then stops without generating registration URLs. A restart loop indicates a startup problem that must be resolved from those logs; waiting longer alone may not help.
+Aha startup uses Docker Compose's `up --wait --wait-timeout` support to wait up to 180 seconds for its health check to pass. Use a Compose version supporting those options. If startup fails or Aha remains unhealthy, the script prints container status and the last 100 log lines, then stops without generating registration URLs. A restart loop indicates a startup problem that must be resolved from those logs; waiting longer alone may not help.
 
 Aha startup writes the core services' registration URLs into `/srv/syn/.env`. Optional-service startup registers its services and writes their URLs into the same file before loading the updated configuration. Repeated registration replaces each existing key instead of appending duplicates. Launchers fail before stopping containers if required registration values are empty.
 

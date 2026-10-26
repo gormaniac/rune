@@ -11,9 +11,9 @@ rune_env_load
 rune_env_require AXON_AHA_REG_URL JSONSTOR_AHA_REG_URL CORTEX_AHA_REG_URL
 rune_env_link "$SRV_DIR"
 
-# Make the storage directories for each service, ensuring they are owned by the SVC_USER.
+# Prepare storage for the container UID, separate from service-user configuration.
 for svc in "${AXON_SERVICE_NAME}" "${JSONSTOR_SERVICE_NAME}" "${CORTEX_SERVICE_NAME}"; do
-  sudo -n -u "$SVC_USER" mkdir -p "$SRV_DIR/$svc/storage"
+  rune_storage_prepare "${SRV_DIR%/}/$svc/storage"
 done
 
 # Copy the compose.yaml file to the /srv/syn/core/ directory, ensuring it is owned by the SVC_USER.
