@@ -19,11 +19,15 @@ docker compose -f "$SRV_DIR/compose.yml" pull
 
 # Start the AHA service in detached mode, killing it first if it is already running.
 docker compose -f "$SRV_DIR/compose.yml" down
-docker compose -f "$SRV_DIR/compose.yml" up -d
+echo "Waiting up to 180 seconds for AHA to become healthy..."
+if ! docker compose -f "$SRV_DIR/compose.yml" up -d --wait --wait-timeout 180; then
+  echo "Error: AHA did not become healthy. Container status and recent logs follow:" >&2
+  docker compose -f "$SRV_DIR/compose.yml" ps -a >&2 || true
+  docker compose -f "$SRV_DIR/compose.yml" logs --no-color --tail 100 aha_service >&2 || true
+  exit 1
+fi
 
-echo "✅ AHA service started successfully."
-echo "⏳ Waiting for 30 seconds to allow AHA to start and before generating registration URLs..."
-sleep 30
+echo "✅ AHA service is healthy. Generating registration URLs..."
 
 url=$(docker compose -f "$SRV_DIR/compose.yml" exec -T aha_service python -m \
   synapse.tools.aha.provision.service "$AXON_SERVICE_NAME" \

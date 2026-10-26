@@ -5,7 +5,7 @@ Synapse RunEverything - A [Synapse](https://github.com/vertexproject/synapse) "a
 The project is split into 3 docker compose files that build on eachother.
 1. `aha/compose.yml` - run the Synapse Aha server to initialize an environment.
     - This has to run first so the remaining servers can register with it
-    - Post-install the compose script sleeps for a time then runs multiple commands to generate the Aha registration URLs for the core services.
+    - Startup waits for Aha's local Synapse health check to pass before generating registration URLs for the core services.
         - Registration URLs are saved directly to `/srv/syn/.env`, replacing any previous values for those services.
     - You can always skip this, setup your own Aha server, and generate your own registration URLs for the next step.
 2. `core/compose.yaml` - run only the core [Synapse Services](https://synapse.docs.vertex.link/en/latest/synapse/glossary.html#gloss-svc-synapse) published by The Vertex Project.
@@ -170,6 +170,8 @@ Use service-specific keys in `/srv/syn/.env` when a service needs a different se
 For upgrades from the previous layout, manually merge any still-needed values from old registration or override files into `/srv/syn/.env`. These files are no longer read, and are not automatically merged or deleted. If a deployed Compose directory already has a regular `.env` file, move its settings into the canonical file and remove the local file before starting the scripts; they will not overwrite it with a symlink.
 
 ## Aha Registration
+
+Aha startup uses Docker Compose's `up --wait --wait-timeout` support to wait up to 120 seconds for its health check to pass. Use a Compose version supporting those options. If startup fails or Aha remains unhealthy, the script prints container status and the last 100 log lines, then stops without generating registration URLs. A restart loop indicates a startup problem that must be resolved from those logs; waiting longer alone may not help.
 
 Aha startup writes the core services' registration URLs into `/srv/syn/.env`. Optional-service startup registers its services and writes their URLs into the same file before loading the updated configuration. Repeated registration replaces each existing key instead of appending duplicates. Launchers fail before stopping containers if required registration values are empty.
 

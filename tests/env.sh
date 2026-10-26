@@ -55,7 +55,9 @@ sudo() {
 
 docker() {
     printf '%s\n' "$*" >> "$TEST_DOCKER_LOG"
-    if [[ "$*" == *synapse.tools.aha.provision.service* ]]; then
+    if [[ "$*" == *" up -d --wait --wait-timeout 120" ]]; then
+        [[ "${TEST_AHA_WAIT_FAIL:-0}" == 0 ]] || return 1
+    elif [[ "$*" == *synapse.tools.aha.provision.service* ]]; then
         printf 'one-time use URL: ssl://fixture/%s?token=$literal\n' "${!#}"
     elif [[ "$*" == *svcs/compose.yaml* && "$*" == *" up -d" ]]; then
         [[ "${IPAPI_AHA_REG_URL:-}" == 'ssl://fixture/00.ipapi?token=$literal' ]] || return 1
@@ -87,6 +89,16 @@ if grep -q ' up -d' "$TEST_DOCKER_LOG"; then fail "services started without regi
 
 rune_env_set IPAPI_AHA_REG_URL stale
 printf 'export IPAPI_AHA_REG_URL=duplicate\n' >> "$RUNE_ENV_FILE"
+cp "$RUNE_ENV_FILE" "$TEMPORARY/before-unhealthy"
+export TEST_AHA_WAIT_FAIL=1
+expect_failure bash "$REPO/aha/run.sh"
+unset TEST_AHA_WAIT_FAIL
+grep -q 'AHA did not become healthy' "$TEMPORARY/failure.log" || fail "unhealthy AHA did not report failure"
+grep -Fq ' up -d --wait --wait-timeout 120' "$TEST_DOCKER_LOG" || fail "startup did not wait for readiness"
+grep -Fq ' ps -a' "$TEST_DOCKER_LOG" || fail "unhealthy AHA did not report container status"
+grep -Fq ' logs --no-color --tail 100 aha_service' "$TEST_DOCKER_LOG" || fail "unhealthy AHA did not report logs"
+if grep -q synapse.tools.aha.provision.service "$TEST_DOCKER_LOG"; then fail "unhealthy AHA attempted registration"; fi
+cmp -s "$RUNE_ENV_FILE" "$TEMPORARY/before-unhealthy" || fail "unhealthy AHA changed registration values"
 bash "$REPO/aha/run.sh"
 bash "$REPO/core/run.sh"
 bash "$REPO/svcs/run.sh"
@@ -96,6 +108,7 @@ rune_env_load
 if grep -q '^export IPAPI_AHA_REG_URL=' "$RUNE_ENV_FILE"; then fail "old exported registration key remains"; fi
 grep -Fq 'AHA_FQDN=${AHA_SERVICE_NAME}.${AHA_DOMAIN}' "$RUNE_ENV_FILE" || fail "lost template expressions"
 [[ -L "$DEPLOY/core/$AHA_SERVICE_NAME/.env" ]] || fail "nested AHA symlink missing"
+grep -Fq 'synapse.tools.healthcheck' "$DEPLOY/core/$AHA_SERVICE_NAME/compose.yml" || fail "AHA healthcheck missing"
 grep -Fq "core/$AHA_SERVICE_NAME//compose.yml exec -T aha_service" "$TEST_DOCKER_LOG" || fail "core registration used wrong AHA stack"
 grep -Fq "core/$AHA_SERVICE_NAME/compose.yml exec -T aha_service" "$TEST_DOCKER_LOG" || fail "optional registration used wrong AHA stack"
 

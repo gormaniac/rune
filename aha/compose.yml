@@ -5,6 +5,12 @@ services:
     hostname: ${AHA_FQDN}
     image: vertexproject/synapse-aha:v2.x.x
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-m", "synapse.tools.healthcheck", "--cell", "cell:///vertex/storage", "--timeout", "3"]
+      interval: 5s
+      timeout: 10s
+      retries: 12
+      start_period: 10s
     volumes:
         - aha_volume:/vertex/storage
     networks:
